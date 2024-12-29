@@ -75,6 +75,7 @@ def sequential_backward(inputs, outputs, targets, loss_fn):
     if rank == world_size - 1:
         # Compute loss and backward
         try:
+            outputs.retain_grad()
             loss = loss_fn(outputs, targets)
             loss.backward()
         except Exception as e:
@@ -86,6 +87,7 @@ def sequential_backward(inputs, outputs, targets, loss_fn):
         grad_outputs = torch.zeros_like(outputs)
         try:
             dist.recv(grad_outputs, src=next_rank)
+            outputs.retain_grad()
             outputs.backward(grad_outputs)
         except Exception as e:
             print(f"[Rank {rank}] Seq_b Error receiving gradients from rank {next_rank} or during backward pass: {e}")
@@ -94,6 +96,7 @@ def sequential_backward(inputs, outputs, targets, loss_fn):
     if rank != 0:
         # Send gradients to the previous rank
         prev_rank = rank - 1
+        
         grad_outputs = outputs.grad
         try:
             dist.send(grad_outputs, dst=prev_rank)
@@ -127,7 +130,6 @@ def pipelined_iteration(model_part, inputs, targets, loss_fn):
     # Backward pass for all microbatches
     for i, (microbatch, microtarget) in enumerate(zip(microbatches, microtargets)):
         microbatch.requires_grad_()
-        print("="*10,microbatch)
         loss = sequential_backward(microbatch, forward_outputs[i], microtarget, loss_fn)
         if rank == world_size - 1:
             total_loss += loss.item()
