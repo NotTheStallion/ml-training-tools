@@ -3,6 +3,21 @@ import torch
 import torch.nn as nn
 import torch.distributed as dist
 from homework import pipelined_iteration, sequential_backward, sequential_forward
+import random
+import numpy as np
+
+def set_seed(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    random.seed(seed)
+    np.random.seed(seed)
+
+set_seed(42)
+
+
 
 def sync_parameters(model):
     with torch.no_grad():
@@ -38,7 +53,7 @@ def test_sequential_backward(full_model, local_model):
     with torch.no_grad():
         dist.broadcast(inputs, src=0)
         dist.broadcast(targets, src=0)
-
+    
     if rank == world_size - 1:
         full_output = full_model(inputs)
         full_loss = nn.MSELoss()(full_output, targets)
@@ -51,7 +66,8 @@ def test_sequential_backward(full_model, local_model):
     gather_list = [None for _ in range(world_size)] if rank == world_size - 1 else None
     dist.gather_object(params, gather_list, dst=world_size - 1)
     if rank == world_size - 1:
-        assert torch.allclose(loss, full_loss, atol=1), f"Distributed backward loss doesn't match full model loss. Difference: {torch.norm(loss - full_loss)}"
+        print(f"norm: {torch.norm(loss - full_loss)}")
+        assert torch.allclose(loss, full_loss), f"Distributed backward loss doesn't match full model loss. Difference: {torch.norm(loss - full_loss)}"
 
         # Merge all local named parameters into a single dictionary
         all_params = {}
@@ -61,10 +77,10 @@ def test_sequential_backward(full_model, local_model):
 
         # Compare gradients with full model
         for name, full_param in full_model.named_parameters():
-            print("Comparing", name)
-            print(all_params[name], full_param.grad)
-            print(f"norm of difference: {torch.norm(all_params[name] - full_param.grad)}")
-            assert torch.allclose(all_params[name], full_param.grad), f"Gradient for {name} doesn't match. Difference: {torch.norm(all_params[name].grad - full_param.grad)}"
+            print(f"shape: {all_params[name].shape} {full_param.grad.shape}")
+            print(all_params[name])
+            print(full_param.grad)
+            assert torch.allclose(all_params[name], full_param.grad), f"Gradient for {name} doesn't match. Difference: {torch.norm(all_params[name] - full_param.grad)}"
         print("Passed")
 
 def test_pipelined_iteration(full_model, local_model):

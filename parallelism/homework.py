@@ -241,3 +241,10 @@ Megatron-LM (https://arxiv.org/pdf/2104.04473) proposes a mechanism called "inte
 - What is the main drawback?
 - What would you change in the code to implement this?
 """
+
+# * Answers :
+# - The main benifit of using interleaving as introduced by Megatron-LM is that it allows for better utilization of the GPUs. Without interleaving, the GPUs would be either idle for a significant amount of time or computes heavy computations (the backward is usually heavier than the forward pass) due to the nature of computations asked from it. Interleaving allows for the GPUs to be utilized more efficiently by allowing them to perform different tasks at the same time and not only one. The images (https://developer-blogs.nvidia.com/wp-content/uploads/2021/03/interleaved_1F1B_schedule-1-625x288.png) shows a clear example of how interleaving can help in better utilization of the GPUs.
+
+# - The principal drawback of interleaving is that it requires more GPU from each individual GPU as well as more communications between GPUs due to the fact that each GPU is now responsible for another task that uses gradients from another GPU. This can lead to a communication bottleneck and can slow down the training process.
+
+# - 
