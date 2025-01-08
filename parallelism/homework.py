@@ -247,4 +247,9 @@ Megatron-LM (https://arxiv.org/pdf/2104.04473) proposes a mechanism called "inte
 
 # - The principal drawback of interleaving is that it requires more GPU from each individual GPU as well as more communications between GPUs due to the fact that each GPU is now responsible for another task that uses gradients from another GPU. This can lead to a communication bottleneck and can slow down the training process.
 
-# - 
+# - The two main changes that would need to be made in the code to implement interleaving are:
+#     1. Changing the model partitioning method to chunks of the model to each rank
+#     2. Modify the forward and backward passes to handle multiple stages.
+#     3. Synchronize the gradients between the different stages of the model.
+#
+#  The changes are talked about in the NVIDIA blog post (https://developer.nvidia.com/blog/scaling-language-model-training-to-a-trillion-parameters-using-megatron/)
