@@ -3,21 +3,6 @@ import torch
 import torch.nn as nn
 import torch.distributed as dist
 from homework import pipelined_iteration, sequential_backward, sequential_forward
-import random
-import numpy as np
-
-def set_seed(seed):
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    random.seed(seed)
-    np.random.seed(seed)
-
-set_seed(42)
-
-
 
 def sync_parameters(model):
     with torch.no_grad():
@@ -66,7 +51,6 @@ def test_sequential_backward(full_model, local_model):
     gather_list = [None for _ in range(world_size)] if rank == world_size - 1 else None
     dist.gather_object(params, gather_list, dst=world_size - 1)
     if rank == world_size - 1:
-        print(f"norm: {torch.norm(loss - full_loss)}")
         assert torch.allclose(loss, full_loss), f"Distributed backward loss doesn't match full model loss. Difference: {torch.norm(loss - full_loss)}"
 
         # Merge all local named parameters into a single dictionary
@@ -74,16 +58,10 @@ def test_sequential_backward(full_model, local_model):
         for rank_params in gather_list:
             for name, param in rank_params.items():
                 all_params[name] = param
-        
-        print([dic.keys() for dic in gather_list])
 
         # Compare gradients with full model
         for name, full_param in full_model.named_parameters():
-            print("="*10, name)
-            print(f"shape: {all_params[name].shape} {full_param.grad.shape}")
-            print(all_params[name])
-            print(full_param.grad)
-            # assert torch.allclose(all_params[name], full_param.grad), f"Gradient for {name} doesn't match. Difference: {torch.norm(all_params[name] - full_param.grad)}"
+            assert torch.allclose(all_params[name], full_param.grad), f"Gradient for {name} doesn't match. Difference: {torch.norm(all_params[name] - full_param.grad)}"
         print("Passed")
 
 def test_pipelined_iteration(full_model, local_model):

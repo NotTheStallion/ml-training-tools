@@ -32,17 +32,16 @@ def sequential_forward(model_part, inputs):
     if rank != 0:
         # Receive inputs from the previous rank
         prev_rank = rank - 1
-        inputs = torch.zeros_like(inputs)
+        inputs = torch.zeros_like(inputs, requires_grad=True)
         try:
             dist.recv(inputs, src=prev_rank)
         except Exception as e:
             print(f"[Rank {rank}] Seq_f Error receiving inputs from rank {prev_rank}: {e}")
             raise
 
-    inputs.requires_grad_()
-
     try:
         outputs = model_part(inputs)
+        outputs.retain_grad()
     except Exception as e:
         print(f"[Rank {rank}] Seq_f Error during forward pass: {e}")
         raise
@@ -99,7 +98,7 @@ def sequential_backward(inputs, outputs, targets, loss_fn):
         
         grad_outputs = outputs.grad
         try:
-            dist.send(grad_outputs, dst=prev_rank)
+            dist.send(inputs.grad, dst=prev_rank)
         except Exception as e:
             print(f"[Rank {rank}]  Seq_b Error sending gradients to rank {prev_rank}: {e}")
             raise
@@ -120,17 +119,18 @@ def pipelined_iteration(model_part, inputs, targets, loss_fn):
     microtargets = torch.chunk(targets, world_size)
     
     total_loss = 0
+    forward_inputs = []
     forward_outputs = []
 
     # Forward pass for all microbatches
     for i, microbatch in enumerate(microbatches):
-        _, outputs = sequential_forward(model_part, microbatch)
+        inputs, outputs = sequential_forward(model_part, microbatch)
+        forward_inputs.append(inputs)
         forward_outputs.append(outputs)
 
     # Backward pass for all microbatches
     for i, (microbatch, microtarget) in enumerate(zip(microbatches, microtargets)):
-        microbatch.requires_grad_()
-        loss = sequential_backward(microbatch, forward_outputs[i], microtarget, loss_fn)
+        loss = sequential_backward(forward_inputs[i], forward_outputs[i], microtarget, loss_fn)
         if rank == world_size - 1:
             total_loss += loss.item()
 
